@@ -36,9 +36,9 @@ def get_treasury_rate(api_key):
     url = "https://api.stlouisfed.org/fred/series/observations"
     params = {
         "series_id": "DGS10",
-        "api_key": "faf1911cdd73be6d9b94e920ced5c1c4",
+        "api_key": api_key,
         "file_type": "json",
-        "sort_order": "desc",
+        "sort_order": "desc",  # Most recent observation first
         "limit": 1
     }
     try:
@@ -62,8 +62,8 @@ def get_treasury_rate(api_key):
 def black_scholes_price(option_type, S, K, T, r, sigma):
     if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
         return 0.0
-    d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma * math.sqrt(T))
-    d2 = d1 - sigma * math.sqrt(T)
+    d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma*math.sqrt(T))
+    d2 = d1 - sigma*math.sqrt(T)
     if option_type.lower() == 'call':
         return S * norm.cdf(d1) - K * math.exp(-r*T) * norm.cdf(d2)
     else:
@@ -74,7 +74,7 @@ def compute_implied_volatility(option_type, S, K, T, r, market_price, tol=1e-6, 
     sigma = 0.2  # initial guess
     for i in range(max_iter):
         price = black_scholes_price(option_type, S, K, T, r, sigma)
-        d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma * math.sqrt(T))
+        d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma*math.sqrt(T))
         vega = S * norm.pdf(d1) * math.sqrt(T)
         if vega == 0:
             break
@@ -89,7 +89,7 @@ def compute_implied_stock(option_type, S_guess, K, T, r, sigma, market_price, to
     S = S_guess
     for i in range(max_iter):
         price = black_scholes_price(option_type, S, K, T, r, sigma)
-        d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma * math.sqrt(T))
+        d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma*math.sqrt(T))
         delta = norm.cdf(d1) if option_type.lower(
         ) == 'call' else norm.cdf(d1) - 1
         if abs(delta) < 1e-6:
@@ -102,26 +102,29 @@ def compute_implied_stock(option_type, S_guess, K, T, r, sigma, market_price, to
 
 
 def compute_greeks(option_type, S, K, T, r, sigma):
-    d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma * math.sqrt(T))
-    d2 = d1 - sigma * math.sqrt(T)
+    d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma*math.sqrt(T))
+    d2 = d1 - sigma*math.sqrt(T)
     delta = norm.cdf(d1) if option_type.lower() == 'call' else norm.cdf(d1) - 1
     gamma = norm.pdf(d1) / (S * sigma * math.sqrt(T))
     vega = S * norm.pdf(d1) * math.sqrt(T)
     if option_type.lower() == 'call':
-        theta = (-S * norm.pdf(d1) * sigma/(2*math.sqrt(T)) -
+        theta = (-S * norm.pdf(d1)*sigma/(2*math.sqrt(T)) -
                  r*K*math.exp(-r*T)*norm.cdf(d2))
-        rho = K * T * math.exp(-r*T) * norm.cdf(d2)
+        rho = K*T*math.exp(-r*T)*norm.cdf(d2)
     else:
-        theta = (-S * norm.pdf(d1) * sigma/(2*math.sqrt(T)) +
+        theta = (-S * norm.pdf(d1)*sigma/(2*math.sqrt(T)) +
                  r*K*math.exp(-r*T)*norm.cdf(-d2))
-        rho = -K * T * math.exp(-r*T) * norm.cdf(-d2)
+        rho = -K*T*math.exp(-r*T)*norm.cdf(-d2)
     return {'Delta': delta, 'Gamma': gamma, 'Vega': vega, 'Theta': theta, 'Rho': rho}
 
 
 # ---------------------------
 # HTML Template (Materialize)
 # ---------------------------
-# Note: "Underlying Price" input was removed. Instead, the optional "Stock Price" is used.
+# Mandatory fields: Option Type, Strike Price, Expiration Date, Risk-Free Rate.
+# Optional fields: Volatility, Stock Price, Option Price.
+# Exactly one optional field must be left blank; that field is computed.
+# The computed field is highlighted in green.
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -223,8 +226,12 @@ HTML_TEMPLATE = """
                   </div>
                 </div>
                 <div class="row">
-                  <div class="col s12">
+                  <div class="col s6">
                     <button class="btn waves-effect waves-light" type="submit" name="action" value="calculate">Calculate Option Variable</button>
+                  </div>
+                  <div class="col s6">
+                    <!-- Clear All button reloads the page -->
+                    <button class="btn waves-effect waves-light" type="button" onclick="clearForm()">Clear All</button>
                   </div>
                 </div>
               </form>
@@ -314,6 +321,10 @@ HTML_TEMPLATE = """
       });
       function toggleDarkMode() {
         document.getElementById("body").classList.toggle("dark-mode");
+      }
+      // Clear form by reloading the page
+      function clearForm() {
+        window.location.reload();
       }
     </script>
   </body>
