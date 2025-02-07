@@ -38,12 +38,14 @@ def get_treasury_rate(api_key):
         "series_id": "DGS10",
         "api_key": api_key,
         "file_type": "json",
-        "sort_order": "desc",  # Most recent observation first
+        "sort_order": "desc",  # most recent observation first
         "limit": 1
     }
     try:
         response = requests.get(url, params=params)
         data = response.json()
+        # Debug: print the fetched data to console
+        print("FRED API response:", data)
         if data.get("observations"):
             latest_obs = data["observations"][0]
             rate = latest_obs.get("value")
@@ -121,10 +123,9 @@ def compute_greeks(option_type, S, K, T, r, sigma):
 # ---------------------------
 # HTML Template (Materialize)
 # ---------------------------
-# Mandatory fields: Option Type, Strike Price, Expiration Date, Risk-Free Rate.
-# Optional fields: Volatility, Stock Price, Option Price.
-# Exactly one optional field must be left blank; that field is computed.
-# The computed field is highlighted in green.
+# Mandatory: Option Type, Strike Price, Expiration Date, Risk-Free Rate.
+# Optional: Volatility, Stock Price, Option Price (exactly one must be empty).
+# A "Clear All" button reloads the page and re-fetches the risk-free rate.
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -230,7 +231,6 @@ HTML_TEMPLATE = """
                     <button class="btn waves-effect waves-light" type="submit" name="action" value="calculate">Calculate Option Variable</button>
                   </div>
                   <div class="col s6">
-                    <!-- Clear All button reloads the page -->
                     <button class="btn waves-effect waves-light" type="button" onclick="clearForm()">Clear All</button>
                   </div>
                 </div>
@@ -322,7 +322,7 @@ HTML_TEMPLATE = """
       function toggleDarkMode() {
         document.getElementById("body").classList.toggle("dark-mode");
       }
-      // Clear form by reloading the page
+      // Clear the form by reloading the page (GET request)
       function clearForm() {
         window.location.reload();
       }
@@ -348,9 +348,9 @@ def index():
         "stock_price": None,
         "option_price": None
     }
-    # On GET, try to fetch the risk-free rate automatically from FRED.
+    # On GET, fetch the risk-free rate automatically from FRED.
     if request.method == 'GET':
-        fred_api_key = "YOUR_FRED_API_KEY"  # Replace with your FRED API key
+        fred_api_key = "faf1911cdd73be6d9b94e920ced5c1c4"  # Replace with your FRED API key
         fetched_rate = get_treasury_rate(fred_api_key)
         if fetched_rate is not None:
             scenario["risk_free_rate"] = f"{fetched_rate:.2f}"
@@ -377,7 +377,6 @@ def index():
         scenario["stock_price"] = form.get("stock_price")
         scenario["option_price"] = form.get("option_price")
 
-        # Check mandatory fields
         mandatory = ["option_type", "strike_price",
                      "expiration_date", "risk_free_rate"]
         for field in mandatory:
@@ -385,7 +384,6 @@ def index():
                 flash(
                     f"Mandatory field {field.replace('_',' ').title()} is required.")
                 return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status=option_field_status)
-
         try:
             K = float(scenario["strike_price"])
             expiration = datetime.datetime.strptime(
