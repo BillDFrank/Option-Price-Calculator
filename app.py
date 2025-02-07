@@ -1,12 +1,26 @@
 # app.py
 from flask import Flask, render_template_string, request, redirect, url_for, flash
-import math, datetime, uuid
+import math
+import datetime
+import uuid
 import plotly.graph_objs as go
 import plotly.offline as pyo
 from scipy.stats import norm
 
 app = Flask(__name__)
-app.secret_key = 'your_generated_secret_key'  # Replace with a securely generated key
+# Replace with a securely generated key
+app.secret_key = 'your_generated_secret_key'
+
+# Register a custom filter to format numbers to 2 decimals.
+
+
+@app.template_filter('format_number')
+def format_number(value):
+    try:
+        return f"{value:.2f}"
+    except Exception:
+        return value
+
 
 # Global dictionary for saving scenarios (in-memory, not persistent)
 SCENARIOS = {}
@@ -14,6 +28,7 @@ SCENARIOS = {}
 # ----------------------
 # Black-Scholes functions
 # ----------------------
+
 
 def black_scholes_price(option_type, S, K, T, r, sigma):
     """Compute Black-Scholes option price for a call or put."""
@@ -26,6 +41,7 @@ def black_scholes_price(option_type, S, K, T, r, sigma):
     else:
         price = K * math.exp(-r*T) * norm.cdf(-d2) - S * norm.cdf(-d1)
     return price
+
 
 def compute_implied_volatility(option_type, S, K, T, r, market_price, tol=1e-6, max_iter=100):
     """Compute implied volatility using Newton-Raphson method."""
@@ -42,14 +58,15 @@ def compute_implied_volatility(option_type, S, K, T, r, market_price, tol=1e-6, 
         sigma = sigma - diff/vega
     return sigma
 
+
 def compute_implied_stock(option_type, S_guess, K, T, r, sigma, market_price, tol=1e-6, max_iter=100):
-    """Compute implied underlying stock price (solve for S) using Newton-Raphson."""
+    """Compute implied underlying stock price using Newton-Raphson method."""
     S = S_guess
     for i in range(max_iter):
         price = black_scholes_price(option_type, S, K, T, r, sigma)
-        # The derivative of price with respect to S is Delta
         d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma*math.sqrt(T))
-        delta = norm.cdf(d1) if option_type.lower()=='call' else norm.cdf(d1) - 1
+        delta = norm.cdf(d1) if option_type.lower(
+        ) == 'call' else norm.cdf(d1) - 1
         if abs(delta) < 1e-6:
             break
         diff = price - market_price
@@ -58,31 +75,32 @@ def compute_implied_stock(option_type, S_guess, K, T, r, sigma, market_price, to
         S = S - diff/delta
     return S
 
+
 def compute_greeks(option_type, S, K, T, r, sigma):
-    """Compute Delta, Gamma, Vega, Theta, and Rho for Black-Scholes."""
+    """Compute Delta, Gamma, Vega, Theta, and Rho using Black-Scholes."""
     d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma*math.sqrt(T))
     d2 = d1 - sigma*math.sqrt(T)
-    delta = norm.cdf(d1) if option_type.lower()=='call' else norm.cdf(d1) - 1
+    delta = norm.cdf(d1) if option_type.lower() == 'call' else norm.cdf(d1) - 1
     gamma = norm.pdf(d1) / (S * sigma * math.sqrt(T))
     vega = S * norm.pdf(d1) * math.sqrt(T)
     if option_type.lower() == 'call':
-        theta = (-S * norm.pdf(d1)*sigma/(2*math.sqrt(T)) - r*K*math.exp(-r*T)*norm.cdf(d2))
+        theta = (-S * norm.pdf(d1)*sigma/(2*math.sqrt(T)) -
+                 r*K*math.exp(-r*T)*norm.cdf(d2))
         rho = K*T*math.exp(-r*T)*norm.cdf(d2)
     else:
-        theta = (-S * norm.pdf(d1)*sigma/(2*math.sqrt(T)) + r*K*math.exp(-r*T)*norm.cdf(-d2))
+        theta = (-S * norm.pdf(d1)*sigma/(2*math.sqrt(T)) +
+                 r*K*math.exp(-r*T)*norm.cdf(-d2))
         rho = -K*T*math.exp(-r*T)*norm.cdf(-d2)
     return {'Delta': delta, 'Gamma': gamma, 'Vega': vega, 'Theta': theta, 'Rho': rho}
+
 
 # ---------------------------
 # HTML Template (Materialize)
 # ---------------------------
-# Mandatory fields: Option Type, Strike Price, Expiration Date (with calendar), Risk-Free Rate.
+# Mandatory fields: Option Type, Strike Price, Expiration Date, Risk-Free Rate.
 # Optional fields: Volatility, Stock Price, Option Price.
-# In the optional section exactly one field must be left empty so that it will be calculated.
-# The computed field will be highlighted in green and its value will appear in its input.
-# Results (calculated variable, Greeks, and graphs) appear on the right.
-# At the bottom brief explanations for each Greek are displayed.
-
+# Exactly one optional field must be left blank; that field will be computed.
+# The computed field is highlighted in green.
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -102,7 +120,6 @@ HTML_TEMPLATE = """
       .green-border input:not([readonly]), .green-border textarea:not([readonly]) { border-bottom: 2px solid green !important; box-shadow: 0 1px 0 0 green !important; }
       .results-card { margin-bottom: 15px; }
       .toggle-table { margin-bottom: 15px; }
-      /* Ensure the datepicker appears on top */
       .datepicker-modal { z-index: 10000; }
     </style>
   </head>
@@ -167,13 +184,13 @@ HTML_TEMPLATE = """
                 <div class="divider"></div>
                 <!-- Optional Fields -->
                 <div class="row">
-                  <p>Fill exactly two of the following (Volatility, Stock Price, Option Price) and leave one blank to calculate it. The blank field will turn green.</p>
+                  <p>Fill exactly two of the following (Volatility, Stock Price, Option Price) and leave one blank. The blank field will turn green.</p>
                   <!-- Volatility -->
                   <div class="input-field col s12 {% if option_field_status.volatility %}{{ 'red-border' if option_field_status.volatility=='red' else 'green-border' }}{% endif %}">
                     <input id="volatility" type="number" step="0.01" name="volatility" value="{{ scenario.volatility if scenario.volatility is not none else '' }}">
                     <label for="volatility" class="{% if scenario.volatility %}active{% endif %}">Volatility (%)</label>
                   </div>
-                  <!-- Stock Price (This now serves as the underlying price) -->
+                  <!-- Stock Price -->
                   <div class="input-field col s12 {% if option_field_status.stock_price %}{{ 'red-border' if option_field_status.stock_price=='red' else 'green-border' }}{% endif %}">
                     <input id="stock_price" type="number" step="0.01" name="stock_price" value="{{ scenario.stock_price if scenario.stock_price is not none else '' }}">
                     <label for="stock_price" class="{% if scenario.stock_price %}active{% endif %}">Stock Price</label>
@@ -207,7 +224,7 @@ HTML_TEMPLATE = """
                 {% elif computed_field == 'stock_price' %}
                   <li><strong>Stock Price:</strong> {{ results.computed_value|round(2) }}</li>
                 {% elif computed_field == 'option_price' %}
-                  <li><strong>Option Price:</strong> {{ results.computed_value|round(2) }}</li>
+                  <li><strong>Option Price:</strong> {{ results.computed_value|format_number }}</li>
                 {% endif %}
               </ul>
             </div>
@@ -264,7 +281,7 @@ HTML_TEMPLATE = """
       </div>
     </div>
     
-    <!-- Materialize, jQuery, and datepicker initialization -->
+    <!-- Materialize, jQuery, and Datepicker Initialization -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
     <script>
@@ -285,9 +302,11 @@ HTML_TEMPLATE = """
 # -----------------------------
 # Routes and Calculation Logic
 # -----------------------------
-@app.route('/', methods=['GET','POST'])
+
+
+@app.route('/', methods=['GET', 'POST'])
 def index():
-    # Initialize scenario dictionary (no underlying_price anymore)
+    # Initialize scenario dictionary (no underlying_price field)
     scenario = {
         "option_type": None,
         "strike_price": None,
@@ -307,10 +326,10 @@ def index():
     greeks = {}
     graph_stock = graph_vol = graph_T = graph_r = ""
     computed_field = None
-    
+
     if request.method == 'POST':
         form = request.form
-        # Mandatory fields (from scenario)
+        # Mandatory fields
         scenario["option_type"] = form.get("option_type")
         scenario["strike_price"] = form.get("strike_price")
         scenario["expiration_date"] = form.get("expiration_date")
@@ -319,34 +338,38 @@ def index():
         scenario["volatility"] = form.get("volatility")
         scenario["stock_price"] = form.get("stock_price")
         scenario["option_price"] = form.get("option_price")
-        
+
         # Check mandatory fields
-        mandatory = ["option_type", "strike_price", "expiration_date", "risk_free_rate"]
+        mandatory = ["option_type", "strike_price",
+                     "expiration_date", "risk_free_rate"]
         for field in mandatory:
-            if not scenario[field] or scenario[field].strip()=="":
-                flash(f"Mandatory field {field.replace('_',' ').title()} is required.")
+            if not scenario[field] or scenario[field].strip() == "":
+                flash(
+                    f"Mandatory field {field.replace('_',' ').title()} is required.")
                 return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status=option_field_status)
-        
+
         # Convert mandatory fields
         try:
             K = float(scenario["strike_price"])
-            expiration = datetime.datetime.strptime(scenario["expiration_date"], "%Y-%m-%d").date()
+            expiration = datetime.datetime.strptime(
+                scenario["expiration_date"], "%Y-%m-%d").date()
             today = datetime.date.today()
             T = max((expiration - today).days / 365.25, 0.001)  # in years
-            r = float(scenario["risk_free_rate"])/100.0  # convert percentage to decimal
+            r = float(scenario["risk_free_rate"]) / \
+                100.0  # convert percentage to decimal
         except Exception as e:
             flash("Error parsing mandatory fields: " + str(e))
             return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status=option_field_status)
-        
-        # Count how many of the optional fields are empty.
+
+        # Count empty optional fields.
         empty_optional = [key for key in ["volatility", "stock_price", "option_price"]
                           if not scenario[key] or scenario[key].strip() == ""]
         if len(empty_optional) != 1:
             flash("Please leave exactly ONE of the optional fields (Volatility, Stock Price, Option Price) empty for calculation.")
-            option_field_status = {k:"red" for k in option_field_status}
+            option_field_status = {k: "red" for k in option_field_status}
             return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status=option_field_status)
         computed_field = empty_optional[0]
-        
+
         # Convert provided optional fields.
         try:
             if scenario["volatility"] and scenario["volatility"].strip() != "":
@@ -364,27 +387,32 @@ def index():
         except Exception as e:
             flash("Error converting optional fields: " + str(e))
             return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status=option_field_status)
-        
+
         # Compute the missing optional field.
         computed_value = None
         try:
             if computed_field == "volatility":
                 if option_mkt is None or S_opt is None:
-                    raise ValueError("To compute volatility, both Stock Price and Option Price must be provided.")
-                computed_value = compute_implied_volatility(scenario["option_type"], S_opt, K, T, r, option_mkt)
+                    raise ValueError(
+                        "To compute volatility, both Stock Price and Option Price must be provided.")
+                computed_value = compute_implied_volatility(
+                    scenario["option_type"], S_opt, K, T, r, option_mkt)
                 scenario["volatility"] = str(round(computed_value*100, 2))
             elif computed_field == "stock_price":
                 if sigma is None or option_mkt is None:
-                    raise ValueError("To compute stock price, both Volatility and Option Price must be provided.")
-                # Use the strike price as initial guess.
-                computed_value = compute_implied_stock(scenario["option_type"], K, K, T, r, sigma, option_mkt)
+                    raise ValueError(
+                        "To compute stock price, both Volatility and Option Price must be provided.")
+                computed_value = compute_implied_stock(
+                    scenario["option_type"], K, K, T, r, sigma, option_mkt)
                 scenario["stock_price"] = str(round(computed_value, 2))
             elif computed_field == "option_price":
                 if sigma is None:
-                    raise ValueError("To compute option price, Volatility must be provided.")
-                # For option price calculation, use the stock price provided.
-                computed_value = black_scholes_price(scenario["option_type"], S_opt, K, T, r, sigma)
-                scenario["option_price"] = str(round(computed_value, 2))
+                    raise ValueError(
+                        "To compute option price, Volatility must be provided.")
+                computed_value = black_scholes_price(
+                    scenario["option_type"], S_opt, K, T, r, sigma)
+                # Force two decimals using the custom filter 'format_number'
+                scenario["option_price"] = f"{computed_value:.2f}"
             option_field_status[computed_field] = "green"
             for key in option_field_status:
                 if key != computed_field:
@@ -392,61 +420,68 @@ def index():
         except Exception as e:
             flash("Error during calculation: " + str(e))
             return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status=option_field_status)
-        
-        # For Greeks and graphs, determine the underlying stock price S_used.
+
+        # Determine underlying price for Greeks and graphs.
         if scenario["stock_price"] and scenario["stock_price"].strip() != "":
             S_used = float(scenario["stock_price"])
         else:
-            S_used = computed_value  # in case stock price was computed
-        
-        # For implied volatility, if it was computed then use computed_value, else sigma.
-        sigma_used = computed_value if computed_field=="volatility" else sigma
-        
-        # Compute Greeks
-        greeks = compute_greeks(scenario["option_type"], S_used, K, T, r, sigma_used)
-        
+            S_used = computed_value
+        sigma_used = computed_value if computed_field == "volatility" else sigma
+
+        greeks = compute_greeks(
+            scenario["option_type"], S_used, K, T, r, sigma_used)
+
         # Generate graphs:
         # 1. Option Price vs Stock Price
         S_vals = [S_used * x for x in [0.8 + 0.01*i for i in range(41)]]
-        prices1 = [black_scholes_price(scenario["option_type"], s, K, T, r, sigma_used) for s in S_vals]
+        prices1 = [black_scholes_price(
+            scenario["option_type"], s, K, T, r, sigma_used) for s in S_vals]
         fig1 = go.Figure(data=[go.Scatter(x=S_vals, y=prices1, mode='lines', name='Option Price')],
                          layout=go.Layout(title='Option Price vs Stock Price',
-                                            xaxis=dict(title='Stock Price'),
-                                            yaxis=dict(title='Option Price')))
+                                          xaxis=dict(title='Stock Price'),
+                                          yaxis=dict(title='Option Price')))
         graph_stock = pyo.plot(fig1, output_type='div', include_plotlyjs='cdn')
-        
+
         # 2. Option Price vs Volatility
-        sigma_vals = [sigma_used * x for x in [0.5 + 0.02*i for i in range(51)]]
-        prices2 = [black_scholes_price(scenario["option_type"], S_used, K, T, r, s) for s in sigma_vals]
+        sigma_vals = [sigma_used *
+                      x for x in [0.5 + 0.02*i for i in range(51)]]
+        prices2 = [black_scholes_price(
+            scenario["option_type"], S_used, K, T, r, s) for s in sigma_vals]
         fig2 = go.Figure(data=[go.Scatter(x=[x*100 for x in sigma_vals], y=prices2, mode='lines', name='Option Price')],
                          layout=go.Layout(title='Option Price vs Volatility',
-                                            xaxis=dict(title='Volatility (%)'),
-                                            yaxis=dict(title='Option Price')))
+                                          xaxis=dict(title='Volatility (%)'),
+                                          yaxis=dict(title='Option Price')))
         graph_vol = pyo.plot(fig2, output_type='div', include_plotlyjs='cdn')
-        
+
         # 3. Option Price vs Time to Expiration
         T_vals = [T * (0.1 + 0.02*i) for i in range(91)]
-        prices3 = [black_scholes_price(scenario["option_type"], S_used, K, t, r, sigma_used) for t in T_vals]
+        prices3 = [black_scholes_price(
+            scenario["option_type"], S_used, K, t, r, sigma_used) for t in T_vals]
         fig3 = go.Figure(data=[go.Scatter(x=T_vals, y=prices3, mode='lines', name='Option Price')],
                          layout=go.Layout(title='Option Price vs Time to Expiration',
-                                            xaxis=dict(title='Time to Expiration (years)'),
-                                            yaxis=dict(title='Option Price')))
+                                          xaxis=dict(
+                                              title='Time to Expiration (years)'),
+                                          yaxis=dict(title='Option Price')))
         graph_T = pyo.plot(fig3, output_type='div', include_plotlyjs='cdn')
-        
+
         # 4. Option Price vs Risk-Free Rate
         r_vals = [r * x for x in [0 + 0.01*i for i in range(101)]]
-        prices4 = [black_scholes_price(scenario["option_type"], S_used, K, T, rv, sigma_used) for rv in r_vals]
+        prices4 = [black_scholes_price(
+            scenario["option_type"], S_used, K, T, rv, sigma_used) for rv in r_vals]
         fig4 = go.Figure(data=[go.Scatter(x=[rv*100 for rv in r_vals], y=prices4, mode='lines', name='Option Price')],
                          layout=go.Layout(title='Option Price vs Risk-Free Rate',
-                                            xaxis=dict(title='Risk-Free Rate (%)'),
-                                            yaxis=dict(title='Option Price')))
+                                          xaxis=dict(
+                                              title='Risk-Free Rate (%)'),
+                                          yaxis=dict(title='Option Price')))
         graph_r = pyo.plot(fig4, output_type='div', include_plotlyjs='cdn')
-        
-        results = {"computed_field": computed_field, "computed_value": computed_value}
-        
+
+        results = {"computed_field": computed_field,
+                   "computed_value": computed_value}
+
     return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status=option_field_status,
                                   results=results, greeks=greeks, graph_stock=graph_stock, graph_vol=graph_vol,
                                   graph_T=graph_T, graph_r=graph_r, computed_field=computed_field)
+
 
 @app.route('/load/<scenario_id>')
 def load_scenario(scenario_id):
@@ -455,6 +490,7 @@ def load_scenario(scenario_id):
         flash("Scenario not found.")
         return redirect(url_for('index'))
     return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status={})
+
 
 if __name__ == '__main__':
     app.run(debug=True)
