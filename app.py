@@ -3,15 +3,17 @@ from flask import Flask, render_template_string, request, redirect, url_for, fla
 import math
 import datetime
 import uuid
+import requests
 import plotly.graph_objs as go
 import plotly.offline as pyo
 from scipy.stats import norm
 
 app = Flask(__name__)
-# Replace with a securely generated key
-app.secret_key = 'your_generated_secret_key'
+app.secret_key = 'your_generated_secret_key'  # Replace with your secret key
 
-# Register a custom filter to format numbers to 2 decimals.
+# ----------------------
+# Custom Jinja Filter
+# ----------------------
 
 
 @app.template_filter('format_number')
@@ -21,50 +23,73 @@ def format_number(value):
     except Exception:
         return value
 
+# ----------------------
+# FRED API Integration
+# ----------------------
 
-# Global dictionary for saving scenarios (in-memory, not persistent)
-SCENARIOS = {}
+
+def get_treasury_rate(api_key):
+    """
+    Fetch the latest 10-year treasury yield (series DGS10) from FRED.
+    Returns the yield as a float (in percent) or None on error.
+    """
+    url = "https://api.stlouisfed.org/fred/series/observations"
+    params = {
+        "series_id": "DGS10",
+        "api_key": "faf1911cdd73be6d9b94e920ced5c1c4",
+        "file_type": "json",
+        "sort_order": "desc",
+        "limit": 1
+    }
+    try:
+        response = requests.get(url, params=params)
+        data = response.json()
+        if data.get("observations"):
+            latest_obs = data["observations"][0]
+            rate = latest_obs.get("value")
+            if rate in ("", "."):
+                return None
+            return float(rate)
+    except Exception as e:
+        print("Error fetching treasury rate:", e)
+    return None
 
 # ----------------------
-# Black-Scholes functions
+# Black-Scholes Functions
 # ----------------------
 
 
 def black_scholes_price(option_type, S, K, T, r, sigma):
-    """Compute Black-Scholes option price for a call or put."""
     if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
         return 0.0
-    d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma*math.sqrt(T))
-    d2 = d1 - sigma*math.sqrt(T)
+    d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma * math.sqrt(T))
+    d2 = d1 - sigma * math.sqrt(T)
     if option_type.lower() == 'call':
-        price = S * norm.cdf(d1) - K * math.exp(-r*T) * norm.cdf(d2)
+        return S * norm.cdf(d1) - K * math.exp(-r*T) * norm.cdf(d2)
     else:
-        price = K * math.exp(-r*T) * norm.cdf(-d2) - S * norm.cdf(-d1)
-    return price
+        return K * math.exp(-r*T) * norm.cdf(-d2) - S * norm.cdf(-d1)
 
 
 def compute_implied_volatility(option_type, S, K, T, r, market_price, tol=1e-6, max_iter=100):
-    """Compute implied volatility using Newton-Raphson method."""
     sigma = 0.2  # initial guess
     for i in range(max_iter):
         price = black_scholes_price(option_type, S, K, T, r, sigma)
-        d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma*math.sqrt(T))
+        d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma * math.sqrt(T))
         vega = S * norm.pdf(d1) * math.sqrt(T)
         if vega == 0:
             break
         diff = price - market_price
         if abs(diff) < tol:
             return sigma
-        sigma = sigma - diff/vega
+        sigma -= diff/vega
     return sigma
 
 
 def compute_implied_stock(option_type, S_guess, K, T, r, sigma, market_price, tol=1e-6, max_iter=100):
-    """Compute implied underlying stock price using Newton-Raphson method."""
     S = S_guess
     for i in range(max_iter):
         price = black_scholes_price(option_type, S, K, T, r, sigma)
-        d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma*math.sqrt(T))
+        d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma * math.sqrt(T))
         delta = norm.cdf(d1) if option_type.lower(
         ) == 'call' else norm.cdf(d1) - 1
         if abs(delta) < 1e-6:
@@ -72,35 +97,31 @@ def compute_implied_stock(option_type, S_guess, K, T, r, sigma, market_price, to
         diff = price - market_price
         if abs(diff) < tol:
             return S
-        S = S - diff/delta
+        S -= diff/delta
     return S
 
 
 def compute_greeks(option_type, S, K, T, r, sigma):
-    """Compute Delta, Gamma, Vega, Theta, and Rho using Black-Scholes."""
-    d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma*math.sqrt(T))
-    d2 = d1 - sigma*math.sqrt(T)
+    d1 = (math.log(S/K) + (r + sigma**2/2)*T) / (sigma * math.sqrt(T))
+    d2 = d1 - sigma * math.sqrt(T)
     delta = norm.cdf(d1) if option_type.lower() == 'call' else norm.cdf(d1) - 1
     gamma = norm.pdf(d1) / (S * sigma * math.sqrt(T))
     vega = S * norm.pdf(d1) * math.sqrt(T)
     if option_type.lower() == 'call':
-        theta = (-S * norm.pdf(d1)*sigma/(2*math.sqrt(T)) -
+        theta = (-S * norm.pdf(d1) * sigma/(2*math.sqrt(T)) -
                  r*K*math.exp(-r*T)*norm.cdf(d2))
-        rho = K*T*math.exp(-r*T)*norm.cdf(d2)
+        rho = K * T * math.exp(-r*T) * norm.cdf(d2)
     else:
-        theta = (-S * norm.pdf(d1)*sigma/(2*math.sqrt(T)) +
+        theta = (-S * norm.pdf(d1) * sigma/(2*math.sqrt(T)) +
                  r*K*math.exp(-r*T)*norm.cdf(-d2))
-        rho = -K*T*math.exp(-r*T)*norm.cdf(-d2)
+        rho = -K * T * math.exp(-r*T) * norm.cdf(-d2)
     return {'Delta': delta, 'Gamma': gamma, 'Vega': vega, 'Theta': theta, 'Rho': rho}
 
 
 # ---------------------------
 # HTML Template (Materialize)
 # ---------------------------
-# Mandatory fields: Option Type, Strike Price, Expiration Date, Risk-Free Rate.
-# Optional fields: Volatility, Stock Price, Option Price.
-# Exactly one optional field must be left blank; that field will be computed.
-# The computed field is highlighted in green.
+# Note: "Underlying Price" input was removed. Instead, the optional "Stock Price" is used.
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -268,7 +289,7 @@ HTML_TEMPLATE = """
         </div>
       </div>
       
-      <!-- Bottom: Explanation of Greeks -->
+      <!-- Bottom: Greek Explanations -->
       <div class="card">
         <div class="card-content">
           <span class="card-title">Greek Explanations</span>
@@ -316,6 +337,12 @@ def index():
         "stock_price": None,
         "option_price": None
     }
+    # On GET, try to fetch the risk-free rate automatically from FRED.
+    if request.method == 'GET':
+        fred_api_key = "YOUR_FRED_API_KEY"  # Replace with your FRED API key
+        fetched_rate = get_treasury_rate(fred_api_key)
+        if fetched_rate is not None:
+            scenario["risk_free_rate"] = f"{fetched_rate:.2f}"
     # Optional field statuses: start as red.
     option_field_status = {
         "volatility": "red",
@@ -348,20 +375,17 @@ def index():
                     f"Mandatory field {field.replace('_',' ').title()} is required.")
                 return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status=option_field_status)
 
-        # Convert mandatory fields
         try:
             K = float(scenario["strike_price"])
             expiration = datetime.datetime.strptime(
                 scenario["expiration_date"], "%Y-%m-%d").date()
             today = datetime.date.today()
-            T = max((expiration - today).days / 365.25, 0.001)  # in years
-            r = float(scenario["risk_free_rate"]) / \
-                100.0  # convert percentage to decimal
+            T = max((expiration - today).days / 365.25, 0.001)
+            r = float(scenario["risk_free_rate"])/100.0
         except Exception as e:
             flash("Error parsing mandatory fields: " + str(e))
             return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status=option_field_status)
 
-        # Count empty optional fields.
         empty_optional = [key for key in ["volatility", "stock_price", "option_price"]
                           if not scenario[key] or scenario[key].strip() == ""]
         if len(empty_optional) != 1:
@@ -370,7 +394,6 @@ def index():
             return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status=option_field_status)
         computed_field = empty_optional[0]
 
-        # Convert provided optional fields.
         try:
             if scenario["volatility"] and scenario["volatility"].strip() != "":
                 sigma = float(scenario["volatility"])/100.0
@@ -388,7 +411,6 @@ def index():
             flash("Error converting optional fields: " + str(e))
             return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status=option_field_status)
 
-        # Compute the missing optional field.
         computed_value = None
         try:
             if computed_field == "volatility":
@@ -411,7 +433,8 @@ def index():
                         "To compute option price, Volatility must be provided.")
                 computed_value = black_scholes_price(
                     scenario["option_type"], S_opt, K, T, r, sigma)
-                # Force two decimals using the custom filter 'format_number'
+                if computed_value < 0.01:
+                    computed_value = 0.01
                 scenario["option_price"] = f"{computed_value:.2f}"
             option_field_status[computed_field] = "green"
             for key in option_field_status:
@@ -421,7 +444,6 @@ def index():
             flash("Error during calculation: " + str(e))
             return render_template_string(HTML_TEMPLATE, scenario=scenario, option_field_status=option_field_status)
 
-        # Determine underlying price for Greeks and graphs.
         if scenario["stock_price"] and scenario["stock_price"].strip() != "":
             S_used = float(scenario["stock_price"])
         else:
@@ -431,8 +453,6 @@ def index():
         greeks = compute_greeks(
             scenario["option_type"], S_used, K, T, r, sigma_used)
 
-        # Generate graphs:
-        # 1. Option Price vs Stock Price
         S_vals = [S_used * x for x in [0.8 + 0.01*i for i in range(41)]]
         prices1 = [black_scholes_price(
             scenario["option_type"], s, K, T, r, sigma_used) for s in S_vals]
@@ -442,7 +462,6 @@ def index():
                                           yaxis=dict(title='Option Price')))
         graph_stock = pyo.plot(fig1, output_type='div', include_plotlyjs='cdn')
 
-        # 2. Option Price vs Volatility
         sigma_vals = [sigma_used *
                       x for x in [0.5 + 0.02*i for i in range(51)]]
         prices2 = [black_scholes_price(
@@ -453,7 +472,6 @@ def index():
                                           yaxis=dict(title='Option Price')))
         graph_vol = pyo.plot(fig2, output_type='div', include_plotlyjs='cdn')
 
-        # 3. Option Price vs Time to Expiration
         T_vals = [T * (0.1 + 0.02*i) for i in range(91)]
         prices3 = [black_scholes_price(
             scenario["option_type"], S_used, K, t, r, sigma_used) for t in T_vals]
@@ -464,7 +482,6 @@ def index():
                                           yaxis=dict(title='Option Price')))
         graph_T = pyo.plot(fig3, output_type='div', include_plotlyjs='cdn')
 
-        # 4. Option Price vs Risk-Free Rate
         r_vals = [r * x for x in [0 + 0.01*i for i in range(101)]]
         prices4 = [black_scholes_price(
             scenario["option_type"], S_used, K, T, rv, sigma_used) for rv in r_vals]
