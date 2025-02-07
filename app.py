@@ -28,7 +28,7 @@ def format_number(value):
 # ----------------------
 
 
-def get_treasury_rate(api_key):
+def get_treasury_rate():
     """
     Fetch the latest 10-year treasury yield (series DGS10) from FRED.
     Returns the yield as a float (in percent) or None on error.
@@ -36,7 +36,7 @@ def get_treasury_rate(api_key):
     url = "https://api.stlouisfed.org/fred/series/observations"
     params = {
         "series_id": "DGS10",
-        "api_key": api_key,
+        "api_key": "faf1911cdd73be6d9b94e920ced5c1c4",
         "file_type": "json",
         "sort_order": "desc",  # most recent observation first
         "limit": 1
