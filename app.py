@@ -1,5 +1,6 @@
 # app.py
 from flask import Flask, render_template_string, request, redirect, url_for, flash
+import os
 import math
 import datetime
 import uuid
@@ -9,7 +10,8 @@ import plotly.offline as pyo
 from scipy.stats import norm
 
 app = Flask(__name__)
-app.secret_key = 'your_generated_secret_key'  # Replace with your secret key
+# Read secret key from environment for production (Render). Falls back to a default for local/dev.
+app.secret_key = os.environ.get('SECRET_KEY', 'your_generated_secret_key')
 
 # ----------------------
 # Custom Jinja Filter
@@ -28,33 +30,36 @@ def format_number(value):
 # ----------------------
 
 
-def get_treasury_rate():
-    """
-    Fetch the latest 10-year treasury yield (series DGS10) from FRED.
-    Returns the yield as a float (in percent) or None on error.
-    """
-    url = "https://api.stlouisfed.org/fred/series/observations"
-    params = {
-        "series_id": "DGS10",
-        "api_key": "faf1911cdd73be6d9b94e920ced5c1c4",
-        "file_type": "json",
-        "sort_order": "desc",  # most recent observation first
-        "limit": 1
-    }
-    try:
-        response = requests.get(url, params=params)
-        data = response.json()
-        # Debug: print the fetched data to console
-        print("FRED API response:", data)
-        if data.get("observations"):
-            latest_obs = data["observations"][0]
-            rate = latest_obs.get("value")
-            if rate in ("", "."):
-                return None
-            return float(rate)
-    except Exception as e:
-        print("Error fetching treasury rate:", e)
-    return None
+def get_treasury_rate(api_key=None):
+  """
+  Fetch the latest 10-year treasury yield (series DGS10) from FRED.
+  Accepts an optional api_key. If not provided it will read from the
+  environment variable FRED_API_KEY. Returns the yield as a float
+  (in percent) or None on error.
+  """
+  url = "https://api.stlouisfed.org/fred/series/observations"
+  key = api_key or os.environ.get('FRED_API_KEY')
+  params = {
+    "series_id": "DGS10",
+    "file_type": "json",
+    "sort_order": "desc",  # most recent observation first
+    "limit": 1
+  }
+  if key:
+    params["api_key"] = key
+  try:
+    response = requests.get(url, params=params, timeout=10)
+    data = response.json()
+    if data.get("observations"):
+      latest_obs = data["observations"][0]
+      rate = latest_obs.get("value")
+      if rate in ("", "."):
+        return None
+      return float(rate)
+  except Exception as e:
+    # don't expose sensitive info in logs
+    print("Error fetching treasury rate:", str(e))
+  return None
 
 # ----------------------
 # Black-Scholes Functions
@@ -158,7 +163,7 @@ HTML_TEMPLATE = """
         </ul>
       </div>
     </nav>
-    
+
     <div class="container">
       {% with messages = get_flashed_messages() %}
         {% if messages %}
@@ -171,7 +176,7 @@ HTML_TEMPLATE = """
           </div>
         {% endif %}
       {% endwith %}
-      
+
       <div class="row">
         <!-- Left Column: Inputs -->
         <div class="col s12 m6">
@@ -238,7 +243,7 @@ HTML_TEMPLATE = """
             </div>
           </div>
         </div>
-        
+
         <!-- Right Column: Results, Greeks and Graphs -->
         <div class="col s12 m6">
           {% if results %}
@@ -295,7 +300,7 @@ HTML_TEMPLATE = """
           {% endif %}
         </div>
       </div>
-      
+
       <!-- Bottom: Greek Explanations -->
       <div class="card">
         <div class="card-content">
@@ -308,7 +313,7 @@ HTML_TEMPLATE = """
         </div>
       </div>
     </div>
-    
+
     <!-- Materialize, jQuery, and Datepicker Initialization -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
@@ -349,9 +354,11 @@ def index():
         "option_price": None
     }
     # On GET, fetch the risk-free rate automatically from FRED.
-    if request.method == 'GET':
-        fred_api_key = "faf1911cdd73be6d9b94e920ced5c1c4"  # Replace with your FRED API key
-        fetched_rate = get_treasury_rate(fred_api_key)
+  if request.method == 'GET':
+    # Try to fetch the latest 10y treasury yield. The FRED API key can be
+    # supplied via the FRED_API_KEY environment variable. If not present,
+    # the call will still be attempted without a key (may be rate-limited).
+    fetched_rate = get_treasury_rate()
         if fetched_rate is not None:
             scenario["risk_free_rate"] = f"{fetched_rate:.2f}"
     # Optional field statuses: start as red.
@@ -519,4 +526,8 @@ def load_scenario(scenario_id):
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+  # Use environment PORT and bind to 0.0.0.0 for cloud hosts like Render.
+  port = int(os.environ.get('PORT', 5000))
+  host = '0.0.0.0'
+  debug = os.environ.get('FLASK_DEBUG', '0') == '1'
+  app.run(host=host, port=port, debug=debug)
