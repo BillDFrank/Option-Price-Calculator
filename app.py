@@ -144,8 +144,76 @@ HTML_TEMPLATE = """
       html, body { margin: 0; padding: 0; }
       body { padding-top: 0; }
       nav { margin-bottom: 0; }
-      .dark-mode { background-color: #424242 !important; color: #fff !important; }
-      .dark-mode .card, .dark-mode .card-content, .dark-mode .card-title, .dark-mode label, .dark-mode p { color: #fff !important; }
+      .dark-mode {
+        background-color: #23272e !important;
+        color: #f5f5f5 !important;
+      }
+      .dark-mode .card,
+      .dark-mode .card-content,
+      .dark-mode .card-title,
+      .dark-mode label,
+      .dark-mode p,
+      .dark-mode .input-field input,
+      .dark-mode .input-field textarea,
+      .dark-mode .input-field select,
+      .dark-mode .input-field .select-dropdown,
+      .dark-mode .input-field input::placeholder,
+      .dark-mode .input-field input[type="text"],
+      .dark-mode .input-field input[type="number"],
+      .dark-mode .input-field input[type="date"],
+      .dark-mode .input-field .caret,
+      .dark-mode .input-field .dropdown-content li > span {
+        color: #f5f5f5 !important;
+      }
+      .dark-mode .input-field input:focus + label,
+      .dark-mode .input-field input:valid + label,
+      .dark-mode .input-field input:invalid + label,
+      .dark-mode .input-field textarea:focus + label,
+      .dark-mode .input-field textarea:valid + label,
+      .dark-mode .input-field textarea:invalid + label {
+        color: #90caf9 !important;
+      }
+      .dark-mode .select-dropdown.dropdown-content li span {
+        color: #23272e !important;
+      }
+      .dark-mode .select-wrapper input.select-dropdown {
+        background-color: #23272e !important;
+        color: #f5f5f5 !important;
+      }
+      .dark-mode .dropdown-content {
+        background-color: #23272e !important;
+      }
+      .dark-mode .card {
+        background-color: #2c313a !important;
+      }
+      .dark-mode .divider {
+        background-color: #616161 !important;
+      }
+      .dark-mode .btn,
+      .dark-mode .btn:hover {
+        background-color: #1976d2 !important;
+        color: #fff !important;
+      }
+      .dark-mode .input-field input,
+      .dark-mode .input-field textarea {
+        border-bottom: 1px solid #90caf9 !important;
+        box-shadow: 0 1px 0 0 #90caf9 !important;
+      }
+      .dark-mode .input-field input:focus,
+      .dark-mode .input-field textarea:focus {
+        border-bottom: 2px solid #90caf9 !important;
+        box-shadow: 0 1px 0 0 #90caf9 !important;
+      }
+      .dark-mode .red-border input:not([readonly]),
+      .dark-mode .red-border textarea:not([readonly]) {
+        border-bottom: 2px solid #ef5350 !important;
+        box-shadow: 0 1px 0 0 #ef5350 !important;
+      }
+      .dark-mode .green-border input:not([readonly]),
+      .dark-mode .green-border textarea:not([readonly]) {
+        border-bottom: 2px solid #66bb6a !important;
+        box-shadow: 0 1px 0 0 #66bb6a !important;
+      }
       .red-border input:not([readonly]), .red-border textarea:not([readonly]) { border-bottom: 2px solid red !important; box-shadow: 0 1px 0 0 red !important; }
       .green-border input:not([readonly]), .green-border textarea:not([readonly]) { border-bottom: 2px solid green !important; box-shadow: 0 1px 0 0 green !important; }
       .results-card { margin-bottom: 15px; }
