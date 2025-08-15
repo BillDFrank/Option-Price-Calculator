@@ -327,9 +327,9 @@ HTML_TEMPLATE = """
       function toggleDarkMode() {
         document.getElementById("body").classList.toggle("dark-mode");
       }
-      // Clear the form by reloading the page (GET request)
+      // Clear the form by submitting a GET request to the root (resets all fields and re-fetches risk-free rate)
       function clearForm() {
-        window.location.reload();
+        window.location.href = '/';
       }
     </script>
   </body>
