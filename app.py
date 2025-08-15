@@ -31,35 +31,35 @@ def format_number(value):
 
 
 def get_treasury_rate(api_key=None):
-  """
-  Fetch the latest 10-year treasury yield (series DGS10) from FRED.
-  Accepts an optional api_key. If not provided it will read from the
-  environment variable FRED_API_KEY. Returns the yield as a float
-  (in percent) or None on error.
-  """
-  url = "https://api.stlouisfed.org/fred/series/observations"
-  key = api_key or os.environ.get('FRED_API_KEY')
-  params = {
-    "series_id": "DGS10",
-    "file_type": "json",
-    "sort_order": "desc",  # most recent observation first
-    "limit": 1
-  }
-  if key:
-    params["api_key"] = key
-  try:
-    response = requests.get(url, params=params, timeout=10)
-    data = response.json()
-    if data.get("observations"):
-      latest_obs = data["observations"][0]
-      rate = latest_obs.get("value")
-      if rate in ("", "."):
-        return None
-      return float(rate)
-  except Exception as e:
-    # don't expose sensitive info in logs
-    print("Error fetching treasury rate:", str(e))
-  return None
+    """
+    Fetch the latest 10-year treasury yield (series DGS10) from FRED.
+    Accepts an optional api_key. If not provided it will read from the
+    environment variable FRED_API_KEY. Returns the yield as a float
+    (in percent) or None on error.
+    """
+    url = "https://api.stlouisfed.org/fred/series/observations"
+    key = api_key or os.environ.get('FRED_API_KEY')
+    params = {
+        "series_id": "DGS10",
+        "file_type": "json",
+        "sort_order": "desc",  # most recent observation first
+        "limit": 1
+    }
+    if key:
+        params["api_key"] = key
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        data = response.json()
+        if data.get("observations"):
+            latest_obs = data["observations"][0]
+            rate = latest_obs.get("value")
+            if rate in ("", "."):
+                return None
+            return float(rate)
+    except Exception as e:
+        # don't expose sensitive info in logs
+        print("Error fetching treasury rate:", str(e))
+    return None
 
 # ----------------------
 # Black-Scholes Functions
@@ -354,11 +354,11 @@ def index():
         "option_price": None
     }
     # On GET, fetch the risk-free rate automatically from FRED.
-  if request.method == 'GET':
-    # Try to fetch the latest 10y treasury yield. The FRED API key can be
-    # supplied via the FRED_API_KEY environment variable. If not present,
-    # the call will still be attempted without a key (may be rate-limited).
-    fetched_rate = get_treasury_rate()
+    if request.method == 'GET':
+        # Try to fetch the latest 10y treasury yield. The FRED API key can be
+        # supplied via the FRED_API_KEY environment variable. If not present,
+        # the call will still be attempted without a key (may be rate-limited).
+        fetched_rate = get_treasury_rate()
         if fetched_rate is not None:
             scenario["risk_free_rate"] = f"{fetched_rate:.2f}"
     # Optional field statuses: start as red.
@@ -526,8 +526,8 @@ def load_scenario(scenario_id):
 
 
 if __name__ == '__main__':
-  # Use environment PORT and bind to 0.0.0.0 for cloud hosts like Render.
-  port = int(os.environ.get('PORT', 5000))
-  host = '0.0.0.0'
-  debug = os.environ.get('FLASK_DEBUG', '0') == '1'
-  app.run(host=host, port=port, debug=debug)
+    # Use environment PORT and bind to 0.0.0.0 for cloud hosts like Render.
+    port = int(os.environ.get('PORT', 5000))
+    host = '0.0.0.0'
+    debug = os.environ.get('FLASK_DEBUG', '0') == '1'
+    app.run(host=host, port=port, debug=debug)
