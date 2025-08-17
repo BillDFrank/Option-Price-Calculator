@@ -47,10 +47,3 @@ This project is a web-based Option Price Calculator built with Flask and Materia
 - Plotly
 - FRED API (for risk-free rate)
 
-## Screenshots
-
-> _Add screenshots here to showcase the UI and features._
-
-## License
-
-This project is licensed under the MIT License.
